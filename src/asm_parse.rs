@@ -66,7 +66,10 @@ fn parse_dst(tokens: &mut TokenStreamIter) -> Dst {
                 }
                 TokenTree::Literal(lit) => {
                     let address = parse_literal(&lit);
-                    Dst::Address(address)
+                    Dst::Address(address, Flag::NotTemplate)
+                }
+                TokenTree::Punct(punct) if punct.as_char() == '$' => {
+                    Dst::Address(parse_template(&mut tokens), Flag::Template)
                 }
                 _ => panic!("语法错误：在地址处遇到意外的符号`{}`", reg),
             }
@@ -79,7 +82,10 @@ fn parse_src(tokens: &mut TokenStreamIter) -> Src {
     let token = tokens.next().expect("语法错误：提前终止");
     match token {
         TokenTree::Ident(ident) => Src::Reg(parse_reg(&ident)),
-        TokenTree::Literal(literal) => Src::Immediate(parse_literal(&literal)),
+        TokenTree::Literal(literal) => Src::Immediate(parse_literal(&literal), Flag::NotTemplate),
+        TokenTree::Punct(punct) if punct.as_char() == '$' => {
+            Src::Immediate(parse_template(tokens), Flag::Template)
+        }
         TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => {
             let mut tokens = group.stream().into_iter();
             let reg = tokens.next().expect("语法错误：提前终止");
@@ -90,11 +96,15 @@ fn parse_src(tokens: &mut TokenStreamIter) -> Src {
                 }
                 TokenTree::Literal(lit) => {
                     let address = parse_literal(&lit);
-                    Src::Address(address)
+                    Src::Address(address, Flag::NotTemplate)
+                }
+                TokenTree::Punct(punct) if punct.as_char() == '$' => {
+                    Src::Address(parse_template(&mut tokens), Flag::Template)
                 }
                 _ => panic!("语法错误：在地址处遇到意外的符号`{}`", reg),
             }
         }
+
         _ => panic!("语法错误：在值处遇到意外的符号`{}`", token),
     }
 }
@@ -131,6 +141,17 @@ where
     {
         Ok(value) => value,
         Err(_) => panic!("语法错误：在字面量处遇到意外的符号`{}`", token),
+    }
+}
+
+fn parse_template<T>(tokens: &mut TokenStreamIter) -> T
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    match tokens.next().expect("语法错误：提前终止") {
+        TokenTree::Literal(lit) => parse_literal(&lit),
+        token => panic!("语法错误：在模板中遇到意外的符号`{}`", token),
     }
 }
 
